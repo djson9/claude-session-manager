@@ -3,3 +3,5 @@ sessions/*
 
 # But track the directory structure
 !sessions/.gitkeep
+
+CLAUDE.md

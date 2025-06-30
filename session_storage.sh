@@ -13,6 +13,7 @@ init_sessions_dir() {
 save_session() {
     local session_file="$1"
     local session_name="$2"
+    local working_dir="$3"
     
     if [ -z "$session_file" ] || [ -z "$session_name" ]; then
         echo "Error: Both session file and name are required"
@@ -42,7 +43,8 @@ save_session() {
     "name": "$session_name",
     "id": "$session_id",
     "created": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
-    "file": "session.jsonl"
+    "file": "session.jsonl",
+    "working_directory": "$working_dir"
 }
 EOF
     

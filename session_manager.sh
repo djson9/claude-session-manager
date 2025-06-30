@@ -89,14 +89,18 @@ show_menu() {
     local selected_session="${sessions[$selected_index]}"
     local selected_name="${names[$selected_index]}"
     
+    # Get the metadata for the selected session
+    local selected_metadata=$(get_session_metadata "$selected_session")
+    
     # Restore the session
-    restore_session "$selected_session" "$selected_name"
+    restore_session "$selected_session" "$selected_name" "$selected_metadata"
 }
 
 # Restore a saved session using --resume
 restore_session() {
     local session_dir="$1"
     local session_name="$2"
+    local metadata="$3"
     
     echo
     echo -e "${GREEN}Preparing to restore: $session_name${NC}"
@@ -112,48 +116,74 @@ restore_session() {
         return 1
     fi
     
-    # Get the parent directory (remove .claude from path)
-    local cwd=$(pwd)
+    # Extract working directory from metadata
+    local working_dir=$(echo "$metadata" | grep '"working_directory"' | cut -d'"' -f4)
+    
+    # Use saved working directory if available, otherwise use current directory
     local parent_dir
-    if [[ "$cwd" == */.claude ]]; then
-        parent_dir=$(dirname "$cwd")
+    if [ -n "$working_dir" ] && [ -d "$working_dir" ]; then
+        parent_dir="$working_dir"
+        echo "Using saved working directory: $working_dir"
     else
-        parent_dir="$cwd"
+        # Fallback to current directory logic
+        local cwd=$(pwd)
+        if [[ "$cwd" == */.claude ]]; then
+            parent_dir=$(dirname "$cwd")
+        else
+            parent_dir="$cwd"
+        fi
+        echo "Using current directory: $parent_dir"
     fi
     
     # Get project directory path
     local project_dir_name=$(echo "$parent_dir" | sed 's/\//-/g')
     local project_path="$HOME/.claude/projects/$project_dir_name"
     
-    # Create project directory if it doesn't exist
-    mkdir -p "$project_path"
+    # Generate a unique identifier for this restoration
+    local restore_uuid=$(uuidgen | tr '[:upper:]' '[:lower:]')
     
-    # Generate a session ID (use the saved session's ID if available)
-    local session_id=$(basename "$session_dir")
+    echo "Creating new Claude session..."
     
-    # Copy the session file to the project directory with a proper session ID
-    local target_session="$project_path/${session_id}.jsonl"
+    # Change to the target directory and create a new session
+    cd "$parent_dir"
     
-    echo "Setting up session for resume..."
-    cp "$session_file" "$target_session"
+    # Use claude -p to create a new session with our UUID marker
+    echo "echo $restore_uuid" | claude -p >/dev/null 2>&1
+    
+    # Wait a moment for the session file to be created
+    sleep 1
+    
+    # Find the newly created session file containing our UUID
+    echo "Looking for new session file..."
+    local new_session_file=""
+    for session_file_candidate in "$project_path"/*.jsonl; do
+        if [ -f "$session_file_candidate" ] && grep -q "$restore_uuid" "$session_file_candidate" 2>/dev/null; then
+            new_session_file="$session_file_candidate"
+            break
+        fi
+    done
+    
+    if [ -z "$new_session_file" ]; then
+        echo -e "${RED}Error: Could not find newly created session${NC}"
+        echo "Searched in: $project_path"
+        return 1
+    fi
+    
+    echo "Found new session: $(basename "$new_session_file")"
+    
+    # Replace the contents with our saved session
+    echo "Restoring session contents..."
+    cp "$session_file" "$new_session_file"
     
     if [ $? -eq 0 ]; then
-        echo -e "${GREEN}✓ Session staged successfully${NC}"
+        echo -e "${GREEN}✓ Session restored successfully${NC}"
         echo
         
-        # Extract the actual session ID from the file if it has one
-        local file_session_id=$(grep -o '"sessionId":"[^"]*"' "$target_session" | head -1 | cut -d'"' -f4)
-        
-        if [ -n "$file_session_id" ]; then
-            echo "Using session ID from file: $file_session_id"
-            session_id="$file_session_id"
-        else
-            echo "Using generated session ID: $session_id"
-        fi
+        # Extract the session ID from the filename
+        local session_id=$(basename "$new_session_file" .jsonl)
         
         # Clear screen and start Claude with --resume
         clear
-        cd "$parent_dir"
         
         echo "Starting Claude Code with restored session..."
         echo -e "${GREEN}Session: $session_name${NC}"
@@ -169,7 +199,7 @@ restore_session() {
         echo "Claude Code has exited."
         
     else
-        echo -e "${RED}Error: Failed to stage session${NC}"
+        echo -e "${RED}Error: Failed to restore session${NC}"
         return 1
     fi
     

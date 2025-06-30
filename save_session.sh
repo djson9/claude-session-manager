@@ -66,9 +66,13 @@ main() {
     
     echo "Current session file: $SESSION_FILE"
     
-    # Save the session
+    # Get the current working directory
+    WORKING_DIR=$(pwd)
+    echo "Working directory: $WORKING_DIR"
+    
+    # Save the session with working directory
     echo "Saving session as '$session_name'..."
-    RESULT=$(save_session "$SESSION_FILE" "$session_name")
+    RESULT=$(save_session "$SESSION_FILE" "$session_name" "$WORKING_DIR")
     
     if [ $? -eq 0 ]; then
         echo "Session saved successfully!"
