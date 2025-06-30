@@ -1,0 +1,5 @@
+# Ignore saved sessions (they may contain sensitive data)
+sessions/*
+
+# But track the directory structure
+!sessions/.gitkeep
